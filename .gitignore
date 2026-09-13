@@ -1,0 +1,81 @@
+# Local environment variables and overrides (may contain credentials)
+.env
+.env.*
+*.env
+*.env.*
+.envrc
+*.local
+# Commit only sanitized environment templates.
+!.env.example
+!.env.sample
+!.env.template
+!*.env.example
+!*.env.sample
+!*.env.template
+
+# Private keys and credential bundles, including CloudFront signing keys
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+id_ecdsa*
+id_dsa*
+
+# Local credentials and secret stores
+.aws/
+.ssh/
+.secrets/
+secrets/
+credentials/
+credentials.json
+credentials.ini
+credentials.csv
+secrets.json
+secrets.yaml
+secrets.yml
+service-account*.json
+service_account*.json
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+.terraform/
+
+# Local data, database dumps, and downloaded documents
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.dump
+*.sql.gz
+backups/
+downloads/
+
+# Logs and generated files can contain local configuration or user data
+*.log
+logs/
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.tsbuildinfo
+dist/
+dist-ssr/
+build/
+coverage/
+
+# Local editor and operating system files
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+*~
