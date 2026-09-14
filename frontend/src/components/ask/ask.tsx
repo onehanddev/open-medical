@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import {
     ArrowUpIcon,
+    CheckIcon,
     BookOpenIcon,
     FileTextIcon,
     GraduationCapIcon,
@@ -142,7 +143,7 @@ function Composer({
 }: {
     value: string
     onChange: (next: string) => void
-    onSubmit: (answer: IAnswer) => void
+    onSubmit: (question: string) => Promise<void>
     isThinking: boolean
     autoFocus?: boolean
 }) {
@@ -169,32 +170,14 @@ function Composer({
     async function handleSubmit(event: FormEvent) {
         event.preventDefault()
 
-        const askResponse = await fetch(
-            `${API_URL}/ask/`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                query: value
-            })
-        });
-        if (!askResponse.ok) {
-            throw new Error('Failed to get a presigned URL');
-        }
-        console.log('askResponse', askResponse);
-        const body = await askResponse.json()
-        console.log('body', body);
-
-
-
-        onSubmit(body)
+        if (!value.trim() || isThinking) return
+        await onSubmit(value.trim())
     }
 
     const canAsk = value.trim().length > 0 && !isThinking
 
     return (
-        <form onSubmit={handleSubmit} className="ask-composer" aria-label="Ask a medical question">
+        <form onSubmit={handleSubmit} className="ask-composer" aria-label="Ask a medical question" aria-busy={isThinking}>
             <label className="sr-only" htmlFor="ask-input">
                 Ask any question from your medical books
             </label>
@@ -209,6 +192,7 @@ function Composer({
                     ref={textareaRef}
                     id="ask-input"
                     value={value}
+                    disabled={isThinking}
                     onChange={(event) => onChange(event.target.value.slice(0, MAX_QUESTION_LENGTH))}
                     onKeyDown={handleKeyDown}
                     placeholder="Ask anything — e.g. “First-line treatment of hypertension in pregnancy?”"
@@ -395,6 +379,39 @@ function SourceViewer({
 const Ask = () => {
     const [answerResponse, setAnswerResponse] = useState<IAnswer>();
     const [draft, setDraft] = useState("");
+    const [isThinking, setIsThinking] = useState(false);
+    const [askError, setAskError] = useState<string | null>(null);
+    const [answeredQuestion, setAnsweredQuestion] = useState("");
+    const requestPending = useRef(false);
+
+    async function askQuestion(question: string) {
+        if (requestPending.current) return
+        requestPending.current = true
+        setIsThinking(true)
+        setAskError(null)
+        setAnswerResponse(undefined)
+        handleCloseViewer()
+        try {
+            const response = await fetch(`${API_URL}/ask/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: question }),
+            })
+            if (!response.ok) throw new Error('Couldn’t get an answer. Please try again.')
+            const answer: IAnswer = await response.json()
+            if (typeof answer?.answer !== 'string' || !Array.isArray(answer.sources)) {
+                throw new Error('The answer could not be read. Please try again.')
+            }
+            setAnsweredQuestion(question)
+            setAnswerResponse(answer)
+        } catch {
+            setAskError('Couldn’t get an answer. Your question is saved above—please try again.')
+        } finally {
+            requestPending.current = false
+            setIsThinking(false)
+        }
+    }
+
     const [viewerSource, setViewerSource] = useState<ISources | null>(null);
     const [viewerContent, setViewerContent] = useState<string | null>(null);
     const [viewerLoading, setViewerLoading] = useState(false);
@@ -476,24 +493,45 @@ const Ask = () => {
                     exact book, chapter, and page.
                 </p>
 
-                <Composer value={draft} onChange={setDraft} onSubmit={(answers) => setAnswerResponse(answers)} isThinking={false} autoFocus />
+                <Composer value={draft} onChange={setDraft} onSubmit={askQuestion} isThinking={isThinking} autoFocus />
 
                 <div className="ask-suggestions" aria-label="Try an example question">
                     {SUGGESTIONS.map(({ icon: Icon, label, prompt }) => (
-                        <button key={label} type="button" className="ask-suggestion" onClick={() => setDraft(prompt)}>
+                        <button key={label} type="button" className="ask-suggestion" disabled={isThinking} onClick={() => setDraft(prompt)}>
                             <Icon aria-hidden="true" />
                             <span>{label}</span>
                         </button>
                     ))}
                 </div>
+                <div className="sr-only" role="status">
+                    {isThinking ? 'Preparing your answer.' : answerResponse ? 'Your answer is ready.' : ''}
+                </div>
+                {isThinking && (
+                    <div className="ask-progress">
+                        <Loader2Icon className="animate-spin" aria-hidden="true" />
+                        <div>
+                            <strong>Preparing your answer</strong>
+                            <p>Searching your books and gathering relevant sources…</p>
+                        </div>
+                    </div>
+                )}
+                {askError && <p className="ask-request-error" role="alert">{askError}</p>}
                 {answerResponse && (
-                    <div className="ask-answer">
+                    <section className="ask-answer" aria-labelledby="answer-title">
+                        <header className="ask-answer-header">
+                            <div className="ask-answer-title">
+                                <CheckIcon aria-hidden="true" />
+                                <h2 id="answer-title">Your answer</h2>
+                            </div>
+                            <span>AI-generated · Review the citations</span>
+                        </header>
+                        <p className="ask-answer-question">{answeredQuestion}</p>
                         <Answer
                             {...answerResponse}
                             activeSourceId={viewerSource?.source_id ?? null}
                             onSourceClick={handleSourceClick}
                         />
-                    </div>
+                    </section>
                 )}
 
             </section>
