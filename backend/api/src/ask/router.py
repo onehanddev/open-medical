@@ -5,7 +5,7 @@ from config.get_env import (
     jina_api_key as JINA_API_KEY,
     cloudfront_base_url,
     cloudfront_key_pair_id,
-    cloudfront_private_key_path,
+    cloudfront_private_key,
     cloudfront_url_expiration,
 )
 import requests
@@ -80,16 +80,20 @@ def ask_question(body: AskPostRequest, db: Session = Depends(get_db)):
 
 @router.get("/get-retrieval-url")
 def get_retrieval_url(document_name: str = Query(...)):
-    # Keep this endpoint limited to a single folder name.
     if "/" in document_name or ".." in document_name:
         raise HTTPException(status_code=400, detail="Invalid document name")
 
     base_url = f"{cloudfront_base_url}/pages/{document_name}"
+
     policy, expires_at = create_policy(
         f"{base_url}/*",
         cloudfront_url_expiration,
     )
-    signature = sign_policy(policy, cloudfront_private_key_path)
+
+    signature = sign_policy(
+        policy,
+        cloudfront_private_key,
+    )
 
     signed_query = (
         f"Policy={cloudfront_base64(policy)}"

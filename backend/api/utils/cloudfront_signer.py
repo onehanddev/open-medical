@@ -1,7 +1,6 @@
 import base64
 import json
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -33,9 +32,9 @@ def create_policy(resource_url: str, expiration_seconds: int) -> tuple[bytes, da
     return compact_policy, expires_at
 
 
-def sign_policy(policy: bytes, private_key_path: str) -> str:
+def sign_policy(policy: bytes, private_key_pem: str) -> str:
     private_key = serialization.load_pem_private_key(
-        Path(private_key_path).expanduser().read_bytes(),
+        private_key_pem.encode("utf-8"),
         password=None,
     )
 
