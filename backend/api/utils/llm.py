@@ -15,6 +15,7 @@ def generate_answer(query: str, context: str):
                             "role": "system",
                             "content": """
             You are a medical evidence assistant.
+            You must only talk about the topics related to medicine, pharmacy, health and the likes.
             Answer only using the provided sources.
             For every important factual claim, cite the supporting source
             using exactly this format:
