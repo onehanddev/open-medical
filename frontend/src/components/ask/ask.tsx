@@ -15,6 +15,7 @@ import { cn } from "cn"
 import "./ask.css"
 import { API_URL } from '@/src/getEnv';
 import ReactMarkdown from "react-markdown";
+import { highlightExcerpt } from "./highlightExcerpt"
 import {getRetrievalUrl, fetchSource} from "./citation_apis"
 // what are the Cardinal features of drug allergy ?
 
@@ -260,58 +261,11 @@ function getSourceNumber(source: ISources): string {
     return source.source_id.split("_")[1] ?? source.source_id
 }
 
-/**
- * Find the cited excerpt inside the full page markdown so it can be
- * highlighted. ReactMarkdown strips raw <mark> HTML by default, so instead
- * of injecting tags we split the markdown around the match and render a
- * <mark> element between two markdown blocks — zero new dependencies.
- */
-function splitAroundExcerpt(
-    pageMd: string,
-    excerpt: string
-): { before: string; match: string; after: string } | null {
-    const trimmed = excerpt.trim()
-    if (!trimmed) return null
-
-    const exact = pageMd.indexOf(trimmed)
-    if (exact !== -1) {
-        return {
-            before: pageMd.slice(0, exact),
-            match: trimmed,
-            after: pageMd.slice(exact + trimmed.length),
-        }
-    }
-
-    // Fuzzy fallback: the excerpt may differ in whitespace/line-breaks from
-    // the stored page. Anchor on the first ~80 non-whitespace characters.
-    const anchor = trimmed.replace(/\s+/g, " ").slice(0, 80)
-    if (anchor.length < 20) return null
-    const normalizedPage = pageMd.replace(/\s+/g, " ")
-    const anchorIndex = normalizedPage.indexOf(anchor)
-    if (anchorIndex === -1) return null
-
-    // Map back approximately by searching for the anchor's starting words.
-    const startWords = anchor.split(" ").slice(0, 6).join(" ")
-    const pageIndex = pageMd.replace(/\s+/g, " ").indexOf(startWords)
-    if (pageIndex === -1) return null
-    return {
-        before: pageMd.slice(0, pageIndex),
-        match: pageMd.slice(pageIndex, pageIndex + trimmed.length),
-        after: pageMd.slice(pageIndex + trimmed.length),
-    }
-}
-
 function PageContent({ pageMd, excerpt }: { pageMd: string; excerpt: string }) {
-    const split = splitAroundExcerpt(pageMd, excerpt)
-    if (!split) {
-        return <ReactMarkdown>{pageMd}</ReactMarkdown>
-    }
     return (
-        <>
-            {split.before && <ReactMarkdown>{split.before}</ReactMarkdown>}
-            <mark className="source-match">{split.match}</mark>
-            {split.after && <ReactMarkdown>{split.after}</ReactMarkdown>}
-        </>
+        <ReactMarkdown rehypePlugins={[highlightExcerpt(pageMd, excerpt)]}>
+            {pageMd}
+        </ReactMarkdown>
     )
 }
 
@@ -331,6 +285,30 @@ function SourceViewer({
     onRetry: () => void
 }) {
     const sourceNumber = getSourceNumber(source)
+    const bodyRef = useRef<HTMLDivElement>(null)
+
+    useEffect(() => {
+        if (isLoading || error || !content) return
+
+        const frame = requestAnimationFrame(() => {
+            const body = bodyRef.current
+            const highlights = body?.querySelectorAll<HTMLElement>('.source-page .source-match')
+            if (!body || !highlights?.length) return
+
+            // A chunk can span multiple marks across Markdown elements.
+            const first = highlights[0].getBoundingClientRect()
+            const last = highlights[highlights.length - 1].getBoundingClientRect()
+            const excerptCenter = (first.top + last.bottom) / 2
+            const top = body.scrollTop + excerptCenter
+                - body.getBoundingClientRect().top - body.clientTop - body.clientHeight / 2
+            body.scrollTo({
+                top: Math.max(0, top),
+                behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+                    ? 'instant' : 'smooth',
+            })
+        })
+        return () => cancelAnimationFrame(frame)
+    }, [content, isLoading, error, source.source_id, source.content])
 
     useEffect(() => {
         function handleKeyDown(event: KeyboardEvent) {
@@ -376,7 +354,7 @@ function SourceViewer({
                     </button>
                 </header>
 
-                <div className="source-panel-body">
+                <div ref={bodyRef} className="source-panel-body">
                     <figure className="source-excerpt">
                         <figcaption>Cited excerpt</figcaption>
                         <blockquote>{source.content}</blockquote>
@@ -435,6 +413,7 @@ const Ask = () => {
         const cached = pageCache.current.get(cacheKey)
         if (cached !== undefined) {
             setViewerContent(cached)
+            setViewerLoading(false)
             return
         }
         setViewerLoading(true)

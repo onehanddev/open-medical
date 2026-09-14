@@ -445,16 +445,10 @@
 }
 
 .source-match {
-  display: block;
-  margin: 12px 0;
-  padding: 10px 12px;
-  border-radius: 10px;
   background: #fdf0c2;
-  border: 1px solid #ecd27a;
   color: var(--upload-ink);
-  font-size: 13.5px;
-  line-height: 1.65;
-  white-space: pre-wrap;
+  border-radius: 2px;
+  box-decoration-break: clone;
 }
 
 .source-state {
