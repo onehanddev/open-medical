@@ -5,3 +5,11 @@ venv/
 .env
 .env.*
 *.env
+.git/
+.gitignore
+.pytest_cache/
+downloads/
+*.md
+!README.md
+test_*.py
+*_test.py

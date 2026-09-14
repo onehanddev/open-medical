@@ -4,8 +4,9 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 if not db_url:
     raise RuntimeError(
-        "DB_URL is missing. Add it to backend/.env "
-        "or set it in the environment."
+        "DB_URL is missing. Set it as an environment variable "
+        "(Lambda console > Configuration > Environment variables) "
+        "or in backend/worker/.env for local runs."
     )
 
 engine = create_engine(db_url,

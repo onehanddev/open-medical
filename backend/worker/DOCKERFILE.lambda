@@ -1,7 +1,25 @@
 FROM public.ecr.aws/lambda/python:3.12
 
-COPY . ${LAMBDA_TASK_ROOT}
+# Install deps first so code changes don't bust the 10GB layer.
+COPY pyproject.toml README.md ${LAMBDA_TASK_ROOT}/
 
-RUN pip install .
+# CPU-only torch: docling pulls CUDA torch by default (~4GB of nvidia/* + triton).
+# Pre-installing from the PyTorch CPU index satisfies docling without CUDA.
+RUN pip install --no-cache-dir \
+      --index-url https://download.pytorch.org/whl/cpu \
+      torch==2.14.0 torchvision==0.29.0 \
+    && pip install --no-cache-dir ${LAMBDA_TASK_ROOT}
+
+# opencv-python needs X11 system libs (libxcb, libGL) absent on Lambda.
+# The headless build ships the same cv2 module with no display deps.
+RUN if pip show opencv-python >/dev/null 2>&1; then \
+      V=$(pip show opencv-python | awk '/^Version:/{print $2}'); \
+      pip uninstall -y opencv-python \
+      && pip install --no-cache-dir "opencv-python-headless==${V}"; \
+    fi
+
+# Copy runtime code only (see .dockerignore).
+COPY s3_upload_fetch.py db.py models.py ${LAMBDA_TASK_ROOT}/
+COPY config/ ${LAMBDA_TASK_ROOT}/config/
 
 CMD ["s3_upload_fetch.lambda_handler"]
