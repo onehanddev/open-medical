@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from config.db import get_db
-from config.get_env import (
+from backend.shared.db import get_db
+from backend.api.config.get_env import (
     jina_api_key as JINA_API_KEY,
     cloudfront_base_url,
     cloudfront_key_pair_id,
@@ -9,10 +9,10 @@ from config.get_env import (
     cloudfront_url_expiration,
 )
 import requests
-from models import DocumentChunks
-from schema.ask import AskPostRequest
-from utils.llm import build_context, generate_answer
-from utils.cloudfront_signer import create_policy, sign_policy, cloudfront_base64
+from backend.shared.models import DocumentChunks
+from backend.api.schema.ask import AskPostRequest
+from backend.api.utils.llm import build_context, generate_answer
+from backend.api.utils.cloudfront_signer import create_policy, sign_policy, cloudfront_base64
 
 router = APIRouter(prefix="/ask")
 

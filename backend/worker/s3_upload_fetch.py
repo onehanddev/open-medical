@@ -19,7 +19,7 @@ from pprint import pformat
 from dotenv import load_dotenv
 # from sklearn.metrics.pairwise import cosine_similarity
 import requests
-from config.db import SessionLocal
+from db import SessionLocal
 from models import DocumentChunks
 from config.get_env import jina_api_key as JINA_API_KEY
 from concurrent.futures import ThreadPoolExecutor
@@ -47,8 +47,6 @@ token_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
 
 logging.basicConfig(level=logging.INFO)
 
-# Create SQS client
-sqs = boto3.client('sqs')
 s3 = boto3.client('s3')
 options = PdfPipelineOptions(
     do_ocr=False,
@@ -60,11 +58,6 @@ converter = DocumentConverter(
         InputFormat.PDF: PdfFormatOption(pipeline_options=options)
     }
 )
-
-queue_url = 'pdf-uploaded-queue'
-
-EMBED_QUERY = "which is more potent to capillary LT or histamine?"
-
 
 def read_s3_object(bucket_name, file_key):
     """Read an S3 object, or skip a stale event for an object that is gone."""
@@ -345,71 +338,73 @@ def parse_bytes(file_bytes, bucket_name, file_key):
     return markdown_content
 
 
+def lambda_handler(event, context):
+        for message in event.get("Records", []):
+            body = json.loads(message['body'])
 
-# CORE FILE CODE TO LISTEN/POLL TO SQS
+            for record in body.get('Records', []):
+                bucket_name = record["s3"]["bucket"]["name"]
+                file_key = unquote_plus(record["s3"]["object"]["key"])
 
+                event_name = record.get("eventName", "")
 
-while True:
+                if not event_name.startswith("ObjectCreated:"):
+                    logging.info(
+                        "Skipping non-create S3 event: event=%s key=%s",
+                        event_name,
+                        file_key,
+                    )
+                    continue
 
-    # Long poll for message on provided SQS queue
-    response = sqs.receive_message(
-        QueueUrl=queue_url,
-        AttributeNames=[
-            'SentTimestamp'
-        ],
-        MaxNumberOfMessages=1,
-        MessageAttributeNames=[
-            'All'
-        ],
-        WaitTimeSeconds=20
-    )
+                if not file_key.startswith("pdf/") or not file_key.lower().endswith(".pdf"):
+                    logging.info("Skipping non-PDF upload event: %s", file_key)
+                    continue
 
-    messages = response.get('Messages', [])
-    if not messages:
-        print("No messages found. Polling again..")
-        continue
-
-    for message in messages:
-        body = json.loads(message['Body'])
-        reciept_handle = message['ReceiptHandle']
-
-        for record in body.get('Records', []):
-            bucket_name = record["s3"]["bucket"]["name"]
-            file_key = unquote_plus(record["s3"]["object"]["key"])
-
-            event_name = record.get("eventName", "")
-
-            if not event_name.startswith("ObjectCreated:"):
                 logging.info(
-                    "Skipping non-create S3 event: event=%s key=%s",
-                    event_name,
+                    "S3 event=%r bucket=%r raw_key=%r decoded_key=%r",
+                    record.get("eventName"),
+                    bucket_name,
+                    record["s3"]["object"]["key"],
                     file_key,
                 )
-                continue
 
-            if not file_key.startswith("pdf/") or not file_key.lower().endswith(".pdf"):
-                logging.info("Skipping non-PDF upload event: %s", file_key)
-                continue
+                file_bytes = read_s3_object(bucket_name, file_key)
+                if file_bytes is None:
+                    continue
 
-            logging.info(
-                "S3 event=%r bucket=%r raw_key=%r decoded_key=%r",
-                record.get("eventName"),
-                bucket_name,
-                record["s3"]["object"]["key"],
-                file_key,
+                parse_bytes(file_bytes, bucket_name, file_key)
+
+
+def poll_sqs_forever(queue_url, wait_seconds=20):
+    """EKS entrypoint: long-poll SQS and feed messages to lambda_handler."""
+    sqs = boto3.client("sqs")
+    logging.info("Polling SQS queue: %s", queue_url)
+    while True:
+        response = sqs.receive_message(
+            QueueUrl=queue_url,
+            MaxNumberOfMessages=1,
+            WaitTimeSeconds=wait_seconds,
+        )
+        messages = response.get("Messages", [])
+        if not messages:
+            continue
+        lambda_handler({"Records": messages}, None)
+        for message in messages:
+            sqs.delete_message(
+                QueueUrl=queue_url,
+                ReceiptHandle=message["ReceiptHandle"],
             )
 
-            file_bytes = read_s3_object(bucket_name, file_key)
-            if file_bytes is None:
-                continue
 
-            pdf_text = parse_bytes(file_bytes, bucket_name, file_key)
+if __name__ == "__main__":
+    from config.get_env import sqs_queue_url as _queue_url
 
-
-
-        sqs.delete_message(
-            QueueUrl=queue_url,
-            ReceiptHandle=reciept_handle
+    if not _queue_url:
+        raise RuntimeError(
+            "SQS_QUEUE_URL is missing. Set it in the environment."
         )
+    poll_sqs_forever(_queue_url)
 
-        print('Message deleted from sqs')
+
+
+           

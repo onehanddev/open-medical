@@ -1,5 +1,5 @@
 from groq import Groq
-from config.get_env import GROQ_API_KEY
+from backend.api.config.get_env import GROQ_API_KEY
 
 client = Groq(
     api_key=GROQ_API_KEY

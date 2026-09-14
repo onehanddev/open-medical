@@ -4,7 +4,7 @@ import boto3
 import logging
 from botocore.config import Config
 from boto3.exceptions import S3UploadFailedError
-from config.get_env import aws_bucket_name, aws_expiry, aws_region_name
+from backend.api.config.get_env import aws_bucket_name, aws_expiry, aws_region_name
 
 router = APIRouter(prefix="/upload")
 

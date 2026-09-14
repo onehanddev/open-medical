@@ -10,9 +10,9 @@ from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
-from src.upload.router import router as upload_router
-from src.ask.router import router as ask_router
-from config.db import get_db
+from backend.api.src.upload.router import router as upload_router
+from backend.api.src.ask.router import router as ask_router
+from backend.shared.db import get_db
 
 app = FastAPI()
 
