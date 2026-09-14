@@ -15,7 +15,7 @@ function navigate(to: string) {
 
 function App() {
   const [path, setPath] = useState(() => getPath())
-  const isAsk = path === "/ask"
+  const isUpload = path === "/upload"
 
   useEffect(() => {
     const sync = () => setPath(getPath())
@@ -36,30 +36,26 @@ function App() {
         </a>
         <nav className="header-nav" aria-label="Primary">
           <a
-            href="/"
-            onClick={(event) => handleNav(event, "/")}
-            className={isAsk ? "" : "is-active"}
-            aria-current={isAsk ? undefined : "page"}
-          >
-            Workspace
-          </a>
-          <a
             href="/ask"
             onClick={(event) => handleNav(event, "/ask")}
-            className={isAsk ? "is-active" : ""}
-            aria-current={isAsk ? "page" : undefined}
+            className={isUpload ? "" : "is-active"}
+            aria-current={isUpload ? undefined : "page"}
           >
             Ask
           </a>
+          <a
+            href="/upload"
+            onClick={(event) => handleNav(event, "/upload")}
+            className={isUpload ? "is-active" : ""}
+            aria-current={isUpload ? "page" : undefined}
+          >
+            Upload
+          </a>
         </nav>
-        <span className="header-label">{isAsk ? "CITED MEDICAL ANSWERS" : "YOUR DOCUMENT WORKSPACE"}</span>
+        <span className="header-label">{isUpload ? "YOUR DOCUMENT WORKSPACE" : "CITED MEDICAL ANSWERS"}</span>
       </header>
 
-      {isAsk ? (
-        <section className="ask-workspace" aria-labelledby="ask-title">
-          <Ask />
-        </section>
-      ) : (
+      {isUpload ? (
       <section className="upload-workspace" aria-labelledby="workspace-title">
         <div className="eyebrow"><span /> A little less paperwork</div>
         <h1 id="workspace-title">Get Cited answers<br /><span>From your medical textbooks</span></h1>
@@ -68,6 +64,10 @@ function App() {
         <Upload />
         <p className="workspace-ask-link">Have a question first? <a href="/ask" onClick={(event) => handleNav(event, "/ask")}>Ask Open Medical →</a></p>
       </section>
+      ) : (
+        <section className="ask-workspace" aria-labelledby="ask-title">
+          <Ask />
+        </section>
       )}
       <footer className="app-footer"><span>OPEN MEDICAL</span><span>Made for a little more clarity.</span></footer>
     </main>
