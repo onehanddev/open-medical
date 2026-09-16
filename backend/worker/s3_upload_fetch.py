@@ -24,6 +24,24 @@ from models import DocumentChunks
 from config.get_env import jina_api_key as JINA_API_KEY
 from concurrent.futures import ThreadPoolExecutor
 from itertools import repeat
+import os
+import psutil
+import threading
+import gc
+
+print("========== BUILD: SLIM-LOG-V1 ==========", flush=True)
+
+process = psutil.Process(os.getpid())
+
+def log_memory(label):
+    mb = process.memory_info().rss / 1024 / 1024
+    print(f"[MEMORY] {label}: {mb:.0f} MB")
+
+def monitor_memory():
+    while True:
+        memory_mb = process.memory_info().rss / 1024 / 1024
+        print(f"[MEMORY MONITOR] {memory_mb:.0f} MB", flush=True)
+        time.sleep(15)
 
 # initialize voyage ai to make embeddings
 # vo = voyageai.Client()
@@ -50,8 +68,8 @@ logging.basicConfig(level=logging.INFO)
 s3 = boto3.client('s3')
 options = PdfPipelineOptions(
     do_ocr=False,
-    do_picture_classification=True,
-    do_table_structure=True,  # Disable if table structure isn't needed.
+    do_picture_classification=False,
+    do_table_structure=False,  # Disable if table structure isn't needed.
 )
 converter = DocumentConverter(
     format_options={
@@ -288,8 +306,16 @@ def save_md_to_s3(page_contents, bucket_name, file_key):
 def parse_bytes(file_bytes, bucket_name, file_key):
     source = DocumentStream(name=file_key, stream=io.BytesIO(file_bytes))
 
+    threading.Thread(
+        target=monitor_memory,
+        daemon=True,
+    ).start()
+
+    log_memory("BEFORE DOCLING CONVERT")
     # DOCLING
     result = converter.convert(source)
+
+    log_memory("AFTER DOCLING CONVERT")
 
     doc = result.document
 
@@ -300,6 +326,8 @@ def parse_bytes(file_bytes, bucket_name, file_key):
 
     with pymupdf.open(stream=file_bytes, filetype="pdf") as pdf:
         for page_num in sorted(doc.pages):
+            if page_num % 25 == 0:
+                log_memory(f"AFTER PAGE {page_num}")
             has_table = pages_with_tables.get(page_num, False)
             visual_flags = pages_with_visuals.get(page_num, {})
             has_picture = visual_flags.get("picture", False)
@@ -315,36 +343,36 @@ def parse_bytes(file_bytes, bucket_name, file_key):
     markdown_content = "\n\n".join(
         page["markdown"] for page in page_contents
     )
-
+    log_memory("AFTER PDF PARSING")
     #start chunking with splitter
     chunks = chunk_markdown_content(page_contents=page_contents)
+    log_memory("AFTER CHUNKING")
     embeddings = create_embeddings(chunks)
-
+    log_memory("AFTER EMBEDDINGS")
     insert_chunk_to_db(
         chunks,
         embeddings,
         document_key = file_key
     )
+    log_memory("AFTER DATABASE SAVE")
 
     save_md_to_s3(page_contents=page_contents, bucket_name=bucket_name, file_key=file_key)
-
-    # os.makedirs("./downloads", exist_ok=True)
-    
-    # output_path = "./downloads/downloaded_document.md"
-
-    # with open(output_path, "w", encoding="utf-8") as file:
-    #     file.write(markdown_content)
 
     return markdown_content
 
 
 def lambda_handler(event, context):
+        log_memory("START")
         for message in event.get("Records", []):
-            body = json.loads(message['body'])
+            body = json.loads(message['Body'])
 
             for record in body.get('Records', []):
+
+                print("SQS BODY:", record.get("Body"))
                 bucket_name = record["s3"]["bucket"]["name"]
                 file_key = unquote_plus(record["s3"]["object"]["key"])
+                print("SQS FILE NAME:", file_key)
+
 
                 event_name = record.get("eventName", "")
 
@@ -369,6 +397,7 @@ def lambda_handler(event, context):
                 )
 
                 file_bytes = read_s3_object(bucket_name, file_key)
+                log_memory("AFTER S3 DOWNLOAD")
                 if file_bytes is None:
                     continue
 
@@ -390,10 +419,21 @@ def poll_sqs_forever(queue_url, wait_seconds=20):
             continue
         lambda_handler({"Records": messages}, None)
         for message in messages:
-            sqs.delete_message(
-                QueueUrl=queue_url,
-                ReceiptHandle=message["ReceiptHandle"],
-            )
+            try:
+                sqs.delete_message(
+                    QueueUrl=queue_url,
+                    ReceiptHandle=message["ReceiptHandle"],
+                )
+            finally:
+                message = None
+                response = None
+
+                 # Ask Python to collect unreachable objects
+                gc.collect()
+
+                log_memory("AFTER CLEANUP")
+
+
 
 
 if __name__ == "__main__":

@@ -52,6 +52,7 @@ def create_query_embedding(query):
     return body["data"][0]["embedding"]
 
 
+
 @router.post('/')
 def ask_question(body: AskPostRequest, db: Session = Depends(get_db)):
     query_embedding = create_query_embedding(body.query)
@@ -89,7 +90,7 @@ def get_retrieval_url(document_name: str = Query(...)):
         f"{base_url}/*",
         cloudfront_url_expiration,
     )
-
+    print('cloudfront_private_key', cloudfront_private_key)
     signature = sign_policy(
         policy,
         cloudfront_private_key,

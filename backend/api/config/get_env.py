@@ -17,7 +17,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 cloudfront_base_url = os.getenv("CLOUDFRONT_BASE_URL")
 cloudfront_key_pair_id = os.getenv("CLOUDFRONT_KEY_PAIR_ID")
-cloudfront_private_key = os.getenv("CLOUDFRONT_PRIVATE_KEY")
+cloudfront_private_key = os.getenv("CLOUDFRONT_PRIVATE_KEY").replace("\\n", "\n")
 cloudfront_url_expiration = int(
     os.getenv("CLOUDFRONT_URL_EXPIRATION", "3600")
 )
