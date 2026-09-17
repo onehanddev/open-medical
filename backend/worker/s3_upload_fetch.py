@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 import requests
 from db import SessionLocal
 from models import DocumentChunks
-from config.get_env import jina_api_key as JINA_API_KEY
+from config.get_env import cloudflare_acccount_id, cloudflare_api_token
 from concurrent.futures import ThreadPoolExecutor
 from itertools import repeat
 import os
@@ -135,37 +135,24 @@ def insert_chunk_to_db(chunks, embeddings, document_key):
             raise
 
 
-def jina_embed(type, input):
-    if type == "doc":
-        inputs = [chunk.page_content for chunk in input]
-    else:
-        inputs = [input]
-
+def cloudflare_embed(inputs):
     response = requests.post(
-        "https://api.jina.ai/v1/embeddings",
-        headers={
-            "Authorization": f"Bearer {JINA_API_KEY}",
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": "jina-embeddings-v5-text-small",
-            "task": "retrieval.passage" if type == "doc" else "retrieval.query",
-            "dimensions": 1024,
-            "input": inputs,
-        },
+        f"https://api.cloudflare.com/client/v4/accounts/{cloudflare_acccount_id}/ai/run/@cf/baai/bge-m3",
+        headers={"Authorization": f"Bearer {cloudflare_api_token}"},
+        json={"text": inputs},
+        timeout=(5, 30),
     )
 
     response.raise_for_status()
 
     body = response.json()
 
-    if type == "doc":
-        return [
-            item["embedding"]
-            for item in body["data"]
-        ]
-
-    return body["data"][0]["embedding"]
+    if not body.get("success"):
+        raise ValueError("Cloudflare embedding request failed.")
+    embeddings = body["result"]["data"]
+    if len(embeddings) != len(inputs):
+        raise ValueError("Cloudflare embedding count does not match input count.")
+    return embeddings
 
 
 def create_embeddings(chunks):
@@ -176,9 +163,8 @@ def create_embeddings(chunks):
 
     for start in range(0, len(chunks), BATCH_SIZE):
         to_embed_chunks = chunks[start:start+BATCH_SIZE]
-        doc_embeddings = jina_embed(
-            "doc",
-            to_embed_chunks
+        doc_embeddings = cloudflare_embed(
+            [chunk.page_content for chunk in to_embed_chunks]
         )
         all_embeddings.extend(doc_embeddings)
         print(

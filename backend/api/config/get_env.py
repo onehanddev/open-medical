@@ -22,4 +22,7 @@ cloudfront_url_expiration = int(
     os.getenv("CLOUDFRONT_URL_EXPIRATION", "3600")
 )
 
+cloudflare_acccount_id = os.getenv("CLOUDFLARE_ACCOUNT_ID")
+cloudflare_api_token = os.getenv("CLOUDFLARE_API_TOKEN")
+
 

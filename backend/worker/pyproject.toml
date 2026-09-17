@@ -16,4 +16,5 @@ dependencies = [
     "requests>=2.34.2",
     "sqlalchemy>=2.0.52",
     "tiktoken>=0.14.0",
+    "uvicorn[standard]>=0.53.0",
 ]

@@ -2,11 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from config.db import get_db
 from config.get_env import (
-    jina_api_key as JINA_API_KEY,
     cloudfront_base_url,
     cloudfront_key_pair_id,
     cloudfront_private_key,
     cloudfront_url_expiration,
+    cloudflare_acccount_id,
+    cloudflare_api_token
 )
 import requests
 from models import DocumentChunks
@@ -19,37 +20,41 @@ router = APIRouter(prefix="/ask")
 LIMIT = 5
 
 def create_query_embedding(query):
-    print('query start for jina', query)
     try:
         response = requests.post(
-            "https://api.jina.ai/v1/embeddings",
-            headers={
-                "Authorization": f"Bearer {JINA_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            timeout=(5, 30),  # Connection timeout and socket read timeout, in seconds.
-            json={
-                "model": "jina-embeddings-v5-text-small",
-                "task": "retrieval.query",
-                "dimensions": 1024,
-                "input": [query],
-            },
+            f"https://api.cloudflare.com/client/v4/accounts/{cloudflare_acccount_id}/ai/run/@cf/baai/bge-m3",
+            headers={"Authorization": f"Bearer {cloudflare_api_token}"},
+            json={"text": [query]},
+            timeout=(5, 30),
         )
         response.raise_for_status()
     except requests.exceptions.Timeout as exc:
         raise HTTPException(
             status_code=504,
-            detail="Jina embedding request timed out. Please try again.",
+            detail="Cloudflare embedding request timed out. Please try again.",
         ) from exc
     except requests.exceptions.RequestException as exc:
+        error_response = exc.response
+        print(
+            "[DEBUG-cloudflare] Embedding request failed:",
+            f"exception={type(exc).__name__}",
+            f"message={exc}",
+            f"status={error_response.status_code if error_response is not None else None}",
+            f"body={error_response.text if error_response is not None else None}",
+            flush=True,
+        )
         raise HTTPException(
             status_code=502,
-            detail="Jina embedding request failed.",
+            detail="Cloudflare embedding request failed.",
         ) from exc
 
     body = response.json()
-    print('body', body)
-    return body["data"][0]["embedding"]
+    if not body.get("success"):
+        raise HTTPException(
+            status_code=502,
+            detail="Cloudflare embedding request failed.",
+        )
+    return body["result"]["data"][0]
 
 
 
