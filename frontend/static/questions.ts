@@ -1,0 +1,6 @@
+export const prefilled_questions = [
+    "In a 31-week pregnancy with severe preeclampsia, growth restriction, oligohydramnios, and absent end-diastolic flow, can a reactive nonstress test justify delaying delivery? Integrate surveillance limitations and Owen’s evidence concerning accelerated lung maturation.",
+    "Indomethacin: How can indomethacin treat both hydramnios and preterm contractions while threatening fetal renal and cardiovascular function? Reconcile the Mamopoulos, Norton, and later conflicting studies, including monitoring and reversibility.",
+    "For a woman with a prior low-transverse cesarean, previous vaginal birth, and unfavorable cervix, compare induction options and rupture risks. Reconcile Parkland’s oxytocin policy with professional guidance and explain whether epidural analgesia masks rupture.",
+    "Why can substantial hemorrhage after twin delivery coexist with an initially unchanged hematocrit? Integrate the book’s quantitative blood-volume comparisons, urine output as a perfusion marker, and transfusion reasoning in actively bleeding versus stable patients."
+]

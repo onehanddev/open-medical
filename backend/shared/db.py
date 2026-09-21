@@ -1,7 +1,6 @@
-from config.get_env import db_url
+from backend.api.config.get_env import db_url
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
-from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
 if not db_url:
     raise RuntimeError(
@@ -15,8 +14,6 @@ engine = create_engine(db_url,
               max_overflow=5,
               connect_args={"connect_timeout": 15}
 )
-
-SQLAlchemyInstrumentor().instrument(engine=engine)
 
 SessionLocal = sessionmaker(bind=engine)
 

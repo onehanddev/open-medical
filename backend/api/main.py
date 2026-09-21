@@ -4,8 +4,10 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
+from telemetry import setup_telemetry
 
-
+setup_telemetry()
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -13,8 +15,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.upload.router import router as upload_router
 from src.ask.router import router as ask_router
 from config.db import get_db
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 app = FastAPI()
+FastAPIInstrumentor.instrument_app(app)
 
 app.include_router(upload_router)
 app.include_router(ask_router)

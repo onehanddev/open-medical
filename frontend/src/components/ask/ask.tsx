@@ -3,6 +3,8 @@ import {
     ArrowUpIcon,
     CheckIcon,
     BookOpenIcon,
+    ChevronLeftIcon,
+    ChevronRightIcon,
     FileTextIcon,
     GraduationCapIcon,
     Loader2Icon,
@@ -16,35 +18,15 @@ import { cn } from "cn"
 import "./ask.css"
 import { API_URL } from '@/src/getEnv';
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { highlightExcerpt } from "./highlightExcerpt"
 import {getRetrievalUrl, fetchSource} from "./citation_apis"
-// what are the Cardinal features of drug allergy ?
+import { prefilled_questions } from "../../../static/questions"
 
 
 const MAX_QUESTION_LENGTH = 1000
 
-const SUGGESTIONS: Array<{ icon: typeof StethoscopeIcon; label: string; prompt: string }> = [
-    {
-        icon: StethoscopeIcon,
-        label: "what are the Cardinal features of drug allergy ?",
-        prompt: "what are the Cardinal features of drug allergy ?",
-    },
-    {
-        icon: GraduationCapIcon,
-        label: "NEET-PG: MI ECG changes",
-        prompt: "What are the ECG changes in acute anterior wall MI, and which artery is involved?",
-    },
-    {
-        icon: FileTextIcon,
-        label: "Dengue warning signs",
-        prompt: "What are the warning signs of severe dengue and when should a patient be referred?",
-    },
-    {
-        icon: BookOpenIcon,
-        label: "Anemia in pregnancy",
-        prompt: "How is iron deficiency anemia in pregnancy diagnosed and treated?",
-    },
-]
+const suggestionIcons = [StethoscopeIcon, GraduationCapIcon, FileTextIcon, BookOpenIcon]
 
 interface ISources {
     source_id: string
@@ -108,6 +90,7 @@ function Answer({
 
     return (
         <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
             components={{
                 a: ({ href, children }) => {
                     if (href?.startsWith("#source-")) {
@@ -382,7 +365,16 @@ const Ask = () => {
     const [isThinking, setIsThinking] = useState(false);
     const [askError, setAskError] = useState<string | null>(null);
     const [answeredQuestion, setAnsweredQuestion] = useState("");
+    const [suggestionIndex, setSuggestionIndex] = useState(0);
     const requestPending = useRef(false);
+    const suggestionQuestion = prefilled_questions[suggestionIndex];
+    const SuggestionIcon = suggestionIcons[suggestionIndex];
+
+    function shiftSuggestion(direction: number) {
+        setSuggestionIndex((current) =>
+            (current + direction + prefilled_questions.length) % prefilled_questions.length
+        )
+    }
 
     async function askQuestion(question: string) {
         if (requestPending.current) return
@@ -493,29 +485,42 @@ const Ask = () => {
                     exact book, chapter, and page.
                 </p>
 
+                <div className="ask-suggestions" aria-label="Try an example question">
+                    <button
+                        type="button"
+                        className="ask-suggestion-nav"
+                        onClick={() => shiftSuggestion(-1)}
+                        disabled={isThinking}
+                        aria-label="Previous example question"
+                    >
+                        <ChevronLeftIcon aria-hidden="true" />
+                    </button>
+                    <button
+                        type="button"
+                        className="ask-suggestion"
+                        disabled={isThinking}
+                        onClick={() => setDraft(suggestionQuestion)}
+                    >
+                        <SuggestionIcon aria-hidden="true" />
+                        <span>{suggestionQuestion}</span>
+                    </button>
+                    <button
+                        type="button"
+                        className="ask-suggestion-nav"
+                        onClick={() => shiftSuggestion(1)}
+                        disabled={isThinking}
+                        aria-label="Next example question"
+                    >
+                        <ChevronRightIcon aria-hidden="true" />
+                    </button>
+                </div>
+
+                <p className="ask-suggestion-count" aria-live="polite">
+                    {suggestionIndex + 1} / {prefilled_questions.length}
+                </p>
+
                 <Composer value={draft} onChange={setDraft} onSubmit={askQuestion} isThinking={isThinking} autoFocus />
 
-                <div className="ask-suggestions" aria-label="Try an example question">
-                    {SUGGESTIONS.map(({ icon: Icon, label, prompt }) => (
-                        <button key={label} type="button" className="ask-suggestion" disabled={isThinking} onClick={() => setDraft(prompt)}>
-                            <Icon aria-hidden="true" />
-                            <span>{label}</span>
-                        </button>
-                    ))}
-                </div>
-                <div className="sr-only" role="status">
-                    {isThinking ? 'Preparing your answer.' : answerResponse ? 'Your answer is ready.' : ''}
-                </div>
-                {isThinking && (
-                    <div className="ask-progress">
-                        <Loader2Icon className="animate-spin" aria-hidden="true" />
-                        <div>
-                            <strong>Preparing your answer</strong>
-                            <p>Searching your books and gathering relevant sources…</p>
-                        </div>
-                    </div>
-                )}
-                {askError && <p className="ask-request-error" role="alert">{askError}</p>}
                 {answerResponse && (
                     <section className="ask-answer" aria-labelledby="answer-title">
                         <header className="ask-answer-header">
@@ -533,6 +538,19 @@ const Ask = () => {
                         />
                     </section>
                 )}
+                <div className="sr-only" role="status">
+                    {isThinking ? 'Preparing your answer.' : answerResponse ? 'Your answer is ready.' : ''}
+                </div>
+                {isThinking && (
+                    <div className="ask-progress">
+                        <Loader2Icon className="animate-spin" aria-hidden="true" />
+                        <div>
+                            <strong>Preparing your answer</strong>
+                            <p>Searching your books and gathering relevant sources…</p>
+                        </div>
+                    </div>
+                )}
+                {askError && <p className="ask-request-error" role="alert">{askError}</p>}
 
             </section>
 

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from urllib.parse import quote
 from config.db import get_db
 from config.get_env import (
     cloudfront_base_url,
@@ -89,13 +90,13 @@ def get_retrieval_url(document_name: str = Query(...)):
     if "/" in document_name or ".." in document_name:
         raise HTTPException(status_code=400, detail="Invalid document name")
 
-    base_url = f"{cloudfront_base_url}/pages/{document_name}"
+    encoded_document_name = quote(document_name, safe="")
+    base_url = f"{cloudfront_base_url.rstrip('/')}/pages/{encoded_document_name}"
 
     policy, expires_at = create_policy(
         f"{base_url}/*",
         cloudfront_url_expiration,
     )
-    print('cloudfront_private_key', cloudfront_private_key)
     signature = sign_policy(
         policy,
         cloudfront_private_key,

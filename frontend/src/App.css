@@ -89,3 +89,8 @@
 @media (prefers-reduced-motion: reduce) {
   .medical-app *, .medical-app *::before, .medical-app *::after { transition: none !important; }
 }
+
+hr {
+  margin: 12px;
+}
+
