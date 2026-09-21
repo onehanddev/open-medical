@@ -1,0 +1,17 @@
+# Lambda launcher (SQS -> ECS run_task).
+#
+# Intentionally slim: lambda_handler.py uses only stdlib + boto3, and boto3
+# is preinstalled in the AWS Lambda Python base image. There is deliberately
+# no `pip install` step here — do NOT install the worker's heavy deps
+# (torch/docling/pymupdf) into this image. They blow up size and cold start
+# for zero benefit. The worker image is `Dockerfile` (ECS Fargate).
+#
+# Build from the worker/ directory (build context):
+#   docker build -f Dockerfile.lambda -t open-medical-lambda .
+FROM public.ecr.aws/lambda/python:3.12
+
+# Copy the launcher only. Explicit COPY (not wildcard) so worker code,
+# tests, and .venv can never leak into the Lambda image.
+COPY lambda_handler.py ${LAMBDA_TASK_ROOT}/
+
+CMD ["lambda_handler.lambda_handler"]

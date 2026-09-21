@@ -19,6 +19,7 @@ def generate_answer(query: str, context: str):
         response = client.chat.completions.create(
 
             model=MODEL_NAME,
+            stream=True,
             messages=[
                             {
                                 "role": "system",

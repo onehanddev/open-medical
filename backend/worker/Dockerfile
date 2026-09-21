@@ -1,3 +1,8 @@
+# ECS Fargate worker (heavy PDF pipeline: torch/docling/pymupdf/...).
+# The Lambda launcher image is `Dockerfile.lambda` (slim, boto3 only).
+#
+# Build from the worker/ directory (build context):
+#   docker build -f Dockerfile -t open-medical-worker .
 FROM python:3.12-slim
 
 WORKDIR /app

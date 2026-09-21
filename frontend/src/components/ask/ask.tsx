@@ -110,6 +110,11 @@ function Answer({
 
                     return <a href={href}>{children}</a>
                 },
+                table: ({ children }) => (
+                    <div className="ask-answer-table-scroll" tabIndex={0}>
+                        <table>{children}</table>
+                    </div>
+                ),
             }}
         >
             {markdown}

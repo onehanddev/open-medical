@@ -15,54 +15,59 @@ from models import DocumentChunks
 from schema.ask import AskPostRequest
 from utils.llm import build_context, generate_answer
 from utils.cloudfront_signer import create_policy, sign_policy, cloudfront_base64
+from opentelemetry import trace
+
+tracer = trace.get_tracer(__name__)
 
 router = APIRouter(prefix="/ask")
 
 LIMIT = 5
 
 def create_query_embedding(query):
-    try:
-        response = requests.post(
-            f"https://api.cloudflare.com/client/v4/accounts/{cloudflare_acccount_id}/ai/run/@cf/baai/bge-m3",
-            headers={"Authorization": f"Bearer {cloudflare_api_token}"},
-            json={"text": [query]},
-            timeout=(5, 30),
-        )
-        response.raise_for_status()
-    except requests.exceptions.Timeout as exc:
-        raise HTTPException(
-            status_code=504,
-            detail="Cloudflare embedding request timed out. Please try again.",
-        ) from exc
-    except requests.exceptions.RequestException as exc:
-        error_response = exc.response
-        print(
-            "[DEBUG-cloudflare] Embedding request failed:",
-            f"exception={type(exc).__name__}",
-            f"message={exc}",
-            f"status={error_response.status_code if error_response is not None else None}",
-            f"body={error_response.text if error_response is not None else None}",
-            flush=True,
-        )
-        raise HTTPException(
-            status_code=502,
-            detail="Cloudflare embedding request failed.",
-        ) from exc
+    with tracer.start_as_current_span('embeddings.query') as span:
+        span.set_attribute('query', query)
+        span.set_attribute('model', 'cloudflare_bge-m3')
+        try:
+            response = requests.post(
+                f"https://api.cloudflare.com/client/v4/accounts/{cloudflare_acccount_id}/ai/run/@cf/baai/bge-m3",
+                headers={"Authorization": f"Bearer {cloudflare_api_token}"},
+                json={"text": [query]},
+                timeout=(5, 30),
+            )
+            response.raise_for_status()
+        except requests.exceptions.Timeout as exc:
+            raise HTTPException(
+                status_code=504,
+                detail="Cloudflare embedding request timed out. Please try again.",
+            ) from exc
+        except requests.exceptions.RequestException as exc:
+            error_response = exc.response
+            print(
+                "[DEBUG-cloudflare] Embedding request failed:",
+                f"exception={type(exc).__name__}",
+                f"message={exc}",
+                f"status={error_response.status_code if error_response is not None else None}",
+                f"body={error_response.text if error_response is not None else None}",
+                flush=True,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="Cloudflare embedding request failed.",
+            ) from exc
 
-    body = response.json()
-    if not body.get("success"):
-        raise HTTPException(
-            status_code=502,
-            detail="Cloudflare embedding request failed.",
-        )
-    return body["result"]["data"][0]
+        body = response.json()
+        if not body.get("success"):
+            raise HTTPException(
+                status_code=502,
+                detail="Cloudflare embedding request failed.",
+            )
+        return body["result"]["data"][0]
 
 
 
 @router.post('/')
 def ask_question(body: AskPostRequest, db: Session = Depends(get_db)):
     query_embedding = create_query_embedding(body.query)
-    print('query_embedding', query_embedding)
     results = db.query(DocumentChunks).order_by(
         DocumentChunks.embeddings.cosine_distance(query_embedding)
     ).limit(LIMIT).all()

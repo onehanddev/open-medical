@@ -21,10 +21,9 @@ from dotenv import load_dotenv
 import requests
 from db import SessionLocal
 from models import DocumentChunks
-from config.get_env import cloudflare_acccount_id, cloudflare_api_token
+from config.get_env import cloudflare_acccount_id, cloudflare_api_token, cluster
 from concurrent.futures import ThreadPoolExecutor
 from itertools import repeat
-import os
 import psutil
 import threading
 import gc
@@ -32,6 +31,9 @@ import gc
 print("========== BUILD: SLIM-LOG-V1 ==========", flush=True)
 
 process = psutil.Process(os.getpid())
+
+_monitor_started = False
+_monitor_lock = threading.Lock()
 
 def log_memory(label):
     mb = process.memory_info().rss / 1024 / 1024
@@ -258,7 +260,7 @@ def chunk_markdown_content(page_contents):
     return chunks
 
 def upload_page(page_content, bucket_name, page_key):
-    key = f"{page_key}{page_content["page_num"]}.md"
+    key = f"{page_key}{page_content['page_num']}.md"
     s3.put_object(
             Bucket=bucket_name,
             Key=key,
@@ -281,7 +283,8 @@ def save_md_to_s3(page_contents, bucket_name, file_key):
     
 
     logging.info(
-        "uploaded_keys:",
+        "uploaded %d pages to s3://%s with keys: %s",
+        len(uploaded_keys),
         bucket_name,
         uploaded_keys,
     )
@@ -290,12 +293,16 @@ def save_md_to_s3(page_contents, bucket_name, file_key):
 
 
 def parse_bytes(file_bytes, bucket_name, file_key):
-    source = DocumentStream(name=file_key, stream=io.BytesIO(file_bytes))
+    global _monitor_started
+    with _monitor_lock:
+        if not _monitor_started:
+            threading.Thread(
+                target=monitor_memory,
+                daemon=True,
+            ).start()
+            _monitor_started = True
 
-    threading.Thread(
-        target=monitor_memory,
-        daemon=True,
-    ).start()
+    source = DocumentStream(name=file_key, stream=io.BytesIO(file_bytes))
 
     log_memory("BEFORE DOCLING CONVERT")
     # DOCLING
@@ -345,91 +352,33 @@ def parse_bytes(file_bytes, bucket_name, file_key):
     save_md_to_s3(page_contents=page_contents, bucket_name=bucket_name, file_key=file_key)
 
     return markdown_content
+    
 
 
-def lambda_handler(event, context):
+def lambda_handler(bucket_name, file_key):
         log_memory("START")
-        for message in event.get("Records", []):
-            body = json.loads(message['Body'])
-
-            for record in body.get('Records', []):
-
-                print("SQS BODY:", record.get("Body"))
-                bucket_name = record["s3"]["bucket"]["name"]
-                file_key = unquote_plus(record["s3"]["object"]["key"])
-                print("SQS FILE NAME:", file_key)
+        file_bytes = read_s3_object(bucket_name, file_key)
+        if file_bytes is None:
+            # Stale S3 event for an object that no longer exists.
+            log_memory("SKIPPED STALE EVENT")
+            return None
+        log_memory("AFTER S3 DOWNLOAD")
+        return parse_bytes(file_bytes, bucket_name, file_key)
 
 
-                event_name = record.get("eventName", "")
+def main():
+    try:
+        bucket = os.environ["PDF_BUCKET"]
+        key = os.environ["PDF_KEY"]
+    except KeyError as exc:
+        raise SystemExit(f"Missing required environment variable: {exc}") from exc
 
-                if not event_name.startswith("ObjectCreated:"):
-                    logging.info(
-                        "Skipping non-create S3 event: event=%s key=%s",
-                        event_name,
-                        file_key,
-                    )
-                    continue
-
-                if not file_key.startswith("pdf/") or not file_key.lower().endswith(".pdf"):
-                    logging.info("Skipping non-PDF upload event: %s", file_key)
-                    continue
-
-                logging.info(
-                    "S3 event=%r bucket=%r raw_key=%r decoded_key=%r",
-                    record.get("eventName"),
-                    bucket_name,
-                    record["s3"]["object"]["key"],
-                    file_key,
-                )
-
-                file_bytes = read_s3_object(bucket_name, file_key)
-                log_memory("AFTER S3 DOWNLOAD")
-                if file_bytes is None:
-                    continue
-
-                parse_bytes(file_bytes, bucket_name, file_key)
-
-
-def poll_sqs_forever(queue_url, wait_seconds=20):
-    """EKS entrypoint: long-poll SQS and feed messages to lambda_handler."""
-    sqs = boto3.client("sqs")
-    logging.info("Polling SQS queue: %s", queue_url)
-    while True:
-        response = sqs.receive_message(
-            QueueUrl=queue_url,
-            MaxNumberOfMessages=1,
-            WaitTimeSeconds=wait_seconds,
-        )
-        messages = response.get("Messages", [])
-        if not messages:
-            continue
-        lambda_handler({"Records": messages}, None)
-        for message in messages:
-            try:
-                sqs.delete_message(
-                    QueueUrl=queue_url,
-                    ReceiptHandle=message["ReceiptHandle"],
-                )
-            finally:
-                message = None
-                response = None
-
-                 # Ask Python to collect unreachable objects
-                gc.collect()
-
-                log_memory("AFTER CLEANUP")
-
-
-
+    print(f"Starting job: s3://{bucket}/{key}")
+    lambda_handler(bucket, key)
+    print("Job done, exiting.")
 
 if __name__ == "__main__":
-    from config.get_env import sqs_queue_url as _queue_url
-
-    if not _queue_url:
-        raise RuntimeError(
-            "SQS_QUEUE_URL is missing. Set it in the environment."
-        )
-    poll_sqs_forever(_queue_url)
+    main()
 
 
 
