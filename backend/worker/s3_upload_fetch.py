@@ -26,8 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 from itertools import repeat
 import psutil
 import threading
-import gc
-
+import sys
 print("========== BUILD: SLIM-LOG-V1 ==========", flush=True)
 
 process = psutil.Process(os.getpid())
@@ -375,7 +374,9 @@ def main():
 
     print(f"Starting job: s3://{bucket}/{key}")
     lambda_handler(bucket, key)
+    sys.exit(0)
     print("Job done, exiting.")
+
 
 if __name__ == "__main__":
     main()
