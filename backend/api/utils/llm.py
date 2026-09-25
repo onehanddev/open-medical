@@ -2,7 +2,7 @@ from groq import Groq, AsyncGroq
 from config.get_env import GROQ_API_KEY
 from opentelemetry import trace
 from sse_starlette.sse import EventSourceResponse, ServerSentEvent
-from api.schema.ask import ChatHistory
+from schema.ask import ChatHistory
 
 
 SYSTEM_PROMPT = {
