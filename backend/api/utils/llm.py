@@ -1,26 +1,11 @@
-from groq import Groq
+from groq import Groq, AsyncGroq
 from config.get_env import GROQ_API_KEY
 from opentelemetry import trace
+from sse_starlette.sse import EventSourceResponse, ServerSentEvent
+from api.schema.ask import ChatHistory
 
-MODEL_NAME = "openai/gpt-oss-120b"
 
-tracer = trace.get_tracer(__name__)
-
-client = Groq(
-    api_key=GROQ_API_KEY
-)
-
-def generate_answer(query: str, context: str):
-
-    with tracer.start_as_current_span("llm.generate_answer") as span:
-        span.set_attribute("gen_ai.operation.name", "ask")
-        span.set_attribute("gen_ai.request.model", MODEL_NAME)
-
-        response = client.chat.completions.create(
-
-            model=MODEL_NAME,
-            messages=[
-                            {
+SYSTEM_PROMPT = {
                                 "role": "system",
                                 "content": """
                 You are a medical evidence assistant.
@@ -46,19 +31,48 @@ def generate_answer(query: str, context: str):
                 - Do not use unnecessary headings.
                 - Do not wrap the entire response in a Markdown code block.
                 """
-                            },
-                            {
-                                "role": "user",
-                                "content": f"""
-                Question:
-                {query}
-                Sources:
-                {context}
-                """
                             }
-                        ]
+
+MODEL_NAME = "openai/gpt-oss-120b"
+
+tracer = trace.get_tracer(__name__)
+
+client = AsyncGroq(
+    api_key=GROQ_API_KEY
+)
+
+async def generate_answer(query: str, history: list[ChatHistory], context: str):
+
+    with tracer.start_as_current_span("llm.generate_answer") as span:
+        span.set_attribute("gen_ai.operation.name", "ask")
+        span.set_attribute("gen_ai.request.model", MODEL_NAME)
+
+        history_messages = [message.model_dump() for message in history]
+
+        response = await client.chat.completions.create(
+            stream=True,
+            model=MODEL_NAME,
+            messages=[
+                SYSTEM_PROMPT,
+                *history_messages,
+                {
+                    "role": "user",
+                    "content": f"""
+                    Question:
+                    {query}
+                    Sources:
+                    {context}
+                    """
+                }
+            ]
                     )
-        return response.choices[0].message.content
+        print('========= resspoonsse', response)
+        async for chunk in response:
+            stream = chunk.choices[0].delta.content
+            print('chat streaming chunk', stream)
+            if stream:
+                yield stream
+
 
 
 def build_context(chunks):
