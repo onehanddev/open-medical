@@ -16,6 +16,8 @@ from schema.ask import AskPostRequest
 from utils.llm import build_context, generate_answer
 from utils.cloudfront_signer import create_policy, sign_policy, cloudfront_base64
 from opentelemetry import trace
+from fastapi.responses import StreamingResponse
+import json
 
 tracer = trace.get_tracer(__name__)
 
@@ -64,30 +66,69 @@ def create_query_embedding(query):
         return body["result"]["data"][0]
 
 
+def build_retrieval_query(query, history):
+
+    RECENT_MSG_COUNT = 2
+
+    user_messages = [
+        msg.content for msg in history if msg.role == 'user'
+    ]
+
+    l = len(user_messages)
+
+    recent_user_message = history[l-RECENT_MSG_COUNT:l]
+
+    return f"""
+       {f"previous questions: {"\n".join(recent_user_message)}" if l > 0 else ""}
+        current question: {query}
+    """
+
+
 
 @router.post('/')
 def ask_question(body: AskPostRequest, db: Session = Depends(get_db)):
-    query_embedding = create_query_embedding(body.query)
+    query = build_retrieval_query(body.query, body.history)
+    query_embedding = create_query_embedding(query)
     results = db.query(DocumentChunks).order_by(
         DocumentChunks.embeddings.cosine_distance(query_embedding)
     ).limit(LIMIT).all()
     context = build_context(results)
-    answer = generate_answer(body.query, context)
-    return {
-        "answer": answer,
-        "sources": [
-            {
-                "source_id": f"SOURCE_{idx}",
-                "page_num": chunk.page_num,
-                "chapter": chunk.chapter,
-                "section": chunk.section,
-                "content": chunk.content,
-                "document_key": chunk.document_key
-            } 
-            for idx, chunk in enumerate(results, start=1)
-        ]
 
-    }
+    async def event_stream():
+        async for token in generate_answer(body.query, body.history, context):
+                yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+
+        print(f"data: {json.dumps({'type': 'token', 'content': token})}\n\n")
+
+        yield f"data: {json.dumps({
+            "type": "sources",
+            "sources": [
+                {
+                    "source_id": f"SOURCE_{idx}",
+                    "page_num": chunk.page_num,
+                    "chapter": chunk.chapter,
+                    "section": chunk.section,
+                    "content": chunk.content,
+                    "document_key": chunk.document_key
+                } 
+                for idx, chunk in enumerate(results, start=1)
+            ]
+
+        })}\n\n"
+
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+    
 
 
 @router.get("/get-retrieval-url")
