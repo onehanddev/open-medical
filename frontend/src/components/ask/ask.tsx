@@ -6,7 +6,6 @@ import {
     ChevronRightIcon,
     FileTextIcon,
     GraduationCapIcon,
-    Loader2Icon,
     RotateCcwIcon,
     ShieldAlertIcon,
     StethoscopeIcon,
@@ -16,6 +15,7 @@ import { prefilled_questions } from "../../../static/questions"
 import Answer from "./Answer"
 import Composer from "./Composer"
 import SourceViewer from "./SourceViewer"
+import ThinkingIndicator from "./ThinkingIndicator"
 import { streamAsk } from "./chatApi"
 import type { ChatMessage, HistoryItem, ISources } from "./types"
 
@@ -37,6 +37,7 @@ const Ask = () => {
     const [suggestionIndex, setSuggestionIndex] = useState(0)
     const [viewer, setViewer] = useState<{ messageId: string; source: ISources } | null>(null)
     const abortRef = useRef<AbortController | null>(null)
+    const messageIdRef = useRef(0)
     const threadEndRef = useRef<HTMLDivElement>(null)
     const isChatting = messages.length > 0
 
@@ -96,7 +97,7 @@ const Ask = () => {
     async function askQuestion(question: string) {
         const trimmed = question.trim()
         if (!trimmed || isThinking) return
-        const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+        const id = `msg-${++messageIdRef.current}`
         const history = buildHistory(messages)
         setMessages((current) => [...current, { id, question: trimmed, answer: "", sources: [], status: "streaming" }])
         setDraft("")
@@ -187,35 +188,41 @@ const Ask = () => {
                     {messages.map((message) => (
                         <article key={message.id} className="ask-turn">
                             <p className="ask-question-bubble">{message.question}</p>
-                            <section className="ask-answer" aria-label="Answer">
-                                <header className="ask-answer-header">
-                                    <div className="ask-answer-title">
-                                        {message.status === "done" ? (
+                            {message.status === "done" ? (
+                                <section className="ask-answer" aria-label="Answer">
+                                    <header className="ask-answer-header">
+                                        <div className="ask-answer-title">
                                             <CheckIcon aria-hidden="true" />
-                                        ) : (
-                                            <Loader2Icon aria-hidden="true" className="animate-spin" />
-                                        )}
-                                        <h2>{message.status === "done" ? "Your answer" : "Searching…"}</h2>
-                                    </div>
-                                    <span>AI-generated · Review the citations</span>
-                                </header>
-                                {message.answer && (
+                                            <h2>Your answer</h2>
+                                        </div>
+                                        <span>AI-generated · Review the citations</span>
+                                    </header>
                                     <Answer
                                         answer={message.answer}
                                         sources={message.sources}
                                         activeSourceId={viewer?.messageId === message.id ? viewer.source.source_id : null}
                                         onSourceClick={(source) => setViewer({ messageId: message.id, source })}
                                     />
-                                )}
-                                {message.status === "error" && (
-                                    <p className="ask-request-error" role="alert">
-                                        Couldn’t get an answer.{" "}
-                                        <button type="button" className="ask-retry" onClick={() => retryMessage(message.id)}>
-                                            Try again
-                                        </button>
-                                    </p>
-                                )}
-                            </section>
+                                </section>
+                            ) : message.status === "error" ? (
+                                <p className="ask-request-error" role="alert">
+                                    Couldn’t get an answer.{" "}
+                                    <button type="button" className="ask-retry" onClick={() => retryMessage(message.id)}>
+                                        Try again
+                                    </button>
+                                </p>
+                            ) : (
+                                <ThinkingIndicator>
+                                    {message.answer && (
+                                        <Answer
+                                            answer={message.answer}
+                                            sources={message.sources}
+                                            activeSourceId={viewer?.messageId === message.id ? viewer.source.source_id : null}
+                                            onSourceClick={(source) => setViewer({ messageId: message.id, source })}
+                                        />
+                                    )}
+                                </ThinkingIndicator>
+                            )}
                         </article>
                     ))}
                     <div ref={threadEndRef} />
